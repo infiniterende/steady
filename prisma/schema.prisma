@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Domain {
+  HEALTH
+  GROWTH
+  FOCUS
+  HOME
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+/// One row per Supabase auth user. `id` mirrors auth.users.id.
+model Profile {
+  id         String   @id @db.Uuid
+  email      String   @unique
+  name       String
+  pointsGoal Int      @default(200)
+  about      String?
+  quietHours   Boolean @default(true)
+  weeklyDigest Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  habits      Habit[]
+  blocks      Block[]
+  tasks       Task[]
+  goals       Goal[]
+  pointEvents PointEvent[]
+  reminders   Reminder[]
+}
+
+/// A recurring routine with a default slot in the day.
+model Habit {
+  id          String   @id @default(cuid())
+  userId      String   @db.Uuid
+  name        String
+  domain      Domain   @default(FOCUS)
+  cadence     String   @default("Daily")
+  time        String   @default("7:00 AM")
+  minutes     Int      @default(20)
+  note        String?
+  progress    Int      @default(0) // 0-100, progress in the current cycle
+  paused      Boolean  @default(false)
+  archived    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user      Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  blocks    Block[]
+  reminders Reminder[]
+
+  @@index([userId])
+}
+
+/// A concrete timed block on a specific day (generated from habits, or added ad hoc).
+model Block {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  habitId   String?
+  date      DateTime @db.Date
+  time      String
+  minuteOfDay Int
+  domain    Domain   @default(FOCUS)
+  minutes   Int      @default(20)
+  title     String
+  note      String?
+  done      Boolean  @default(false)
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user  Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  habit Habit?  @relation(fields: [habitId], references: [id], onDelete: SetNull)
+
+  @@unique([habitId, date])
+  @@index([userId, date])
+}
+
+/// A short goal for a given day ("Today's goals").
+model Task {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  date      DateTime @db.Date
+  title     String
+  category  Domain   @default(FOCUS)
+  due       String   @default("Today")
+  priority  Priority @default(MEDIUM)
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+enum GoalKind {
+  COUNT   // accumulate toward a target (books read, sessions)
+  MEASURE // track a measurement toward a target (weight, resting HR)
+}
+
+/// A longer-term target with daily entries and milestones.
+model Goal {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  name      String
+  kind      GoalKind @default(COUNT)
+  start     Float    @default(0) // MEASURE: the value you started from
+  current   Float    @default(0) // COUNT: accumulated so far
+  target    Float
+  unit      String   @default("units")
+  horizon   String   @default("No deadline")
+  deadline  DateTime? @db.Date
+  note      String   @default("Just started")
+  step      Float    @default(1)
+  createdAt DateTime @default(now())
+
+  user       Profile     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries    GoalEntry[]
+  milestones Milestone[]
+
+  @@index([userId])
+}
+
+/// One logged value per goal per day (a weigh-in, or the running count).
+model GoalEntry {
+  id        String   @id @default(cuid())
+  goalId    String
+  date      DateTime @db.Date
+  value     Float
+  note      String?
+  createdAt DateTime @default(now())
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, date])
+}
+
+/// A checkpoint on the way to a goal's target.
+model Milestone {
+  id        String   @id @default(cuid())
+  goalId    String
+  label     String
+  value     Float
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+}
+
+/// Extra points not derived from blocks/tasks (timer starts, habit logs, sessions).
+model PointEvent {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  date      DateTime @db.Date
+  amount    Int
+  reason    String
+  createdAt DateTime @default(now())
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+enum Channel {
+  PUSH
+  EMAIL
+}
+
+/// A nudge for a habit at a time of day.
+model Reminder {
+  id          String   @id @default(cuid())
+  userId      String   @db.Uuid
+  habitId     String
+  time        String
+  minuteOfDay Int
+  channel     Channel  @default(PUSH)
+  repeat      String   @default("Every day")
+  on          Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  user  Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  habit Habit   @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

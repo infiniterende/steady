@@ -1,26 +1,86 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-jakarta), "Plus Jakarta Sans", Helvetica, sans-serif;
+  --font-mono: var(--font-plex-mono), "IBM Plex Mono", monospace;
+
+  /* Cozy Neutral Retreat (app) */
+  --color-page: #f7f1eb;
+  --color-surface: #f4ede6;
+  --color-line: #e8ddd3;
+  --color-soft: #ddbea9;
+  --color-olive: #6b705c;
+  --color-olive-dark: #565b4a;
+  --color-sage: #b7b7a4;
+  --color-clay: #cb997e;
+  --color-ink: #40453a;
+  --color-muted: oklch(0.5 0.014 80);
+  --color-muted-2: oklch(0.53 0.014 80);
+  --color-muted-3: oklch(0.55 0.014 80);
+  --color-danger: oklch(0.52 0.15 30);
+
+  /* Marketing pastels */
+  --color-home-bg: #fbf6f1;
+  --color-home-ink: #3a3530;
+  --color-home-line: #efe2d8;
+  --color-home-tint: #f6eee8;
+  --color-peach: #f9d8cf;
+  --color-mint: #d3e9df;
+  --color-sky: #d6e3f3;
+  --color-butter: #f8ebc4;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@layer base {
+html,
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+::selection {
+  background: #b7b7a4;
+}
+
+.app-theme {
+  background: #f7f1eb;
+  color: oklch(0.31 0.014 80);
+}
+:where(.app-theme a) {
+  color: #6b705c;
+}
+:where(.app-theme a:hover) {
+  color: #565b4a;
+}
+
+.home-theme {
+  background: #fbf6f1;
+  color: #3a3530;
+}
+:where(.home-theme a) {
+  color: #3a3530;
+}
+:where(.home-theme a:hover) {
+  color: #6b705c;
+}
+}
+
+.balance {
+  text-wrap: balance;
+}
+.pretty {
+  text-wrap: pretty;
 }
