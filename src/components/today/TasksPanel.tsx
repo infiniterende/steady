@@ -2,11 +2,11 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import type { Domain, Priority } from "@prisma/client";
-import { addTask, removeTask, toggleTask } from "@/app/app/actions";
+import { addTask, removeTask, setTop, toggleTask } from "@/app/app/actions";
 import { CAT, CATEGORY_LABEL, DOMAINS, PRIORITY_STYLE } from "@/lib/domain";
 import { CatIcon, CatTile, ErrorText, Ring, btnPrimary } from "@/components/app/ui";
 
-export type TaskItem = { id: string; title: string; category: Domain; due: string; priority: Priority; done: boolean };
+export type TaskItem = { id: string; title: string; category: Domain; due: string; priority: Priority; done: boolean; top?: boolean };
 
 type Filter = "All" | "Open" | "Done";
 const PRIO_ORDER: Priority[] = ["HIGH", "MEDIUM", "LOW"];
@@ -19,10 +19,12 @@ export function TasksPanel({ tasks, day }: { tasks: TaskItem[]; day: string }) {
   const [pending, startTransition] = useTransition();
   const [list, mutate] = useOptimistic(
     tasks,
-    (state: TaskItem[], action: { type: "toggle" | "remove"; id: string }) =>
+    (state: TaskItem[], action: { type: "toggle" | "remove" | "top"; id: string }) =>
       action.type === "toggle"
         ? state.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t))
-        : state.filter((t) => t.id !== action.id),
+        : action.type === "top"
+          ? state.map((t) => (t.id === action.id ? { ...t, top: !t.top } : t))
+          : state.filter((t) => t.id !== action.id),
   );
 
   const done = list.filter((t) => t.done).length;
@@ -142,6 +144,22 @@ export function TasksPanel({ tasks, day }: { tasks: TaskItem[]; day: string }) {
                   </span>
                 </span>
               </span>
+              <button
+                type="button"
+                title={t.top ? "Take off today's three" : "Make one of today's three"}
+                aria-pressed={!!t.top}
+                onClick={() =>
+                  startTransition(async () => {
+                    mutate({ type: "top", id: t.id });
+                    const res = await setTop(t.id, !t.top);
+                    if (!res.ok) setError(res.error);
+                  })
+                }
+                className="h-[26px] w-[26px] shrink-0 cursor-pointer rounded-lg border-0 bg-transparent text-[17px] leading-none hover:bg-surface"
+                style={{ color: t.top ? "#CB997E" : "#C9BDB0" }}
+              >
+                {t.top ? "★" : "☆"}
+              </button>
               <button
                 type="button"
                 title="Mark done"

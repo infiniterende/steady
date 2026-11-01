@@ -24,6 +24,11 @@ export default async function HabitsPage() {
             paused: h.paused,
             streak: streaks.get(h.id)?.current ?? 0,
             best: streaks.get(h.id)?.best ?? 0,
+            minLabel: h.minLabel ?? "",
+            stdLabel: h.stdLabel ?? "",
+            stretchLabel: h.stretchLabel ?? "",
+            minMinutes: h.minMinutes,
+            stretchMinutes: h.stretchMinutes,
           }))}
         />
       </Card>

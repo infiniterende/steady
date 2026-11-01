@@ -14,7 +14,8 @@
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "db:deploy": "prisma migrate deploy",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "check:rls": "node scripts/check-rls.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

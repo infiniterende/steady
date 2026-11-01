@@ -30,6 +30,9 @@ model Profile {
   about      String?
   quietHours   Boolean @default(true)
   weeklyDigest Boolean @default(true)
+  blockReminders Boolean @default(true) // heads-up before each timed block / event / task
+  reminderLead   Int     @default(5)    // minutes before
+  onboarded      Boolean @default(false) // finished (or skipped) the first-run setup
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -39,6 +42,11 @@ model Profile {
   goals       Goal[]
   pointEvents PointEvent[]
   reminders   Reminder[]
+  journal     JournalEntry[]
+  events      CalendarEvent[]
+  focus       FocusSession[]
+  planner     PlannerItem[]
+  plannerDays PlannerDay[]
 }
 
 /// A recurring routine with a default slot in the day.
@@ -56,6 +64,13 @@ model Habit {
   archived    Boolean  @default(false)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
+
+  // Flexible sizes: what "done" looks like on a low, normal and great day.
+  minLabel     String? // e.g. "Read 1 page"
+  stdLabel     String? // e.g. "Read 10 pages"
+  stretchLabel String? // e.g. "Read 20 pages"
+  minMinutes   Int     @default(2)
+  stretchMinutes Int?
 
   user      Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
   blocks    Block[]
@@ -77,6 +92,7 @@ model Block {
   title     String
   note      String?
   done      Boolean  @default(false)
+  size      HabitSize? // which version was done; null while open
   hidden    Boolean  @default(false)
   createdAt DateTime @default(now())
 
@@ -85,6 +101,12 @@ model Block {
 
   @@unique([habitId, date])
   @@index([userId, date])
+}
+
+enum HabitSize {
+  MIN
+  STANDARD
+  STRETCH
 }
 
 /// A short goal for a given day ("Today's goals").
@@ -97,9 +119,30 @@ model Task {
   due       String   @default("Today")
   priority  Priority @default(MEDIUM)
   done      Boolean  @default(false)
+  top       Boolean  @default(false) // one of the (max three) daily priorities
+  firstStep String?  // the one small next action from "Help me start"
   createdAt DateTime @default(now())
 
+  user  Profile         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  focus FocusSession[]
+
+  @@index([userId, date])
+}
+
+/// A timed, bounded stretch of work, optionally started from a task.
+model FocusSession {
+  id         String   @id @default(cuid())
+  userId     String   @db.Uuid
+  taskId     String?
+  date       DateTime @db.Date
+  title      String
+  plannedMin Int
+  actualSec  Int      @default(0)
+  completed  Boolean  @default(false) // ran to its stopping point
+  createdAt  DateTime @default(now())
+
   user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([userId, date])
 }
@@ -195,4 +238,104 @@ model Reminder {
   habit Habit   @relation(fields: [habitId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// One journal entry per day: a mood and some writing.
+model JournalEntry {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  date      DateTime @db.Date
+  mood      Int?     // 1 (sad) … 5 (great)
+  title     String   @default("")
+  body      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photos JournalPhoto[]
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+/// A photo attached to a journal entry, stored in the private "journal" bucket.
+model JournalPhoto {
+  id        String   @id @default(cuid())
+  entryId   String
+  userId    String   @db.Uuid
+  path      String   @unique // <userId>/<day>/<file> inside the bucket
+  createdAt DateTime @default(now())
+
+  entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@index([entryId])
+}
+
+enum CalendarKind {
+  EVENT
+  REMINDER
+}
+
+/// A one-off dated item on the calendar (tasks live in Task).
+model CalendarEvent {
+  id          String       @id @default(cuid())
+  userId      String       @db.Uuid
+  date        DateTime     @db.Date
+  kind        CalendarKind @default(EVENT)
+  title       String
+  time        String?
+  minuteOfDay Int?
+  note        String?
+  done        Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+enum PlannerKind {
+  TASK
+  ASSIGNMENT
+  DEADLINE
+  APPOINTMENT
+  EVENT
+  REMINDER
+}
+
+/// Something dated on the Planner: a task, assignment, deadline, appointment or event, with an optional reminder.
+model PlannerItem {
+  id          String      @id @default(cuid())
+  userId      String      @db.Uuid
+  date        DateTime    @db.Date
+  kind        PlannerKind @default(TASK)
+  title       String
+  time        String?
+  minuteOfDay Int?
+  note        String?
+  place       String? // shown as @place, e.g. where a reminder or appointment is
+  priority    Priority    @default(MEDIUM)
+  done        Boolean     @default(false)
+  /// Minutes before the due moment to notify (0 = at the time). Null = no reminder.
+  /// Untimed items are due at 9:00 AM for reminder purposes.
+  remindMin   Int?
+  createdAt   DateTime    @default(now())
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+/// Per-day decoration on the Planner: a short label pill, a free-text note and a background tint.
+model PlannerDay {
+  id     String   @id @default(cuid())
+  userId String   @db.Uuid
+  date   DateTime @db.Date
+  label  String?
+  note   String?
+  tint   String? // pink | butter | mint | sky
+
+  user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
 }

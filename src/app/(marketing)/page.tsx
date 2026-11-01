@@ -16,24 +16,16 @@ const FEATURES = [
   { tag: "Today", title: "Timed sessions", body: "Start, pause and reset countdowns for reading, practice or any focused block." },
   { tag: "Schedule", title: "A day in blocks", body: "Lay out habits on a timeline and tick them off as the day goes." },
   { tag: "Goals", title: "Longer targets", body: "Track books read, focus minutes or move-days against a deadline." },
-  { tag: "Streaks", title: "Consistency at a glance", body: "Twelve weeks of history, milestones and a streak per habit." },
+  { tag: "Dashboard", title: "Consistency at a glance", body: "Twelve weeks of history, milestones and a streak per habit." },
   { tag: "Calendar", title: "Reminders that respect you", body: "Per-habit nudges with quiet hours and a Sunday summary." },
-  { tag: "Group", title: "Accountability group", body: "A small leaderboard with friends, plus a nudge when someone goes quiet." },
-];
-
-const STORIES = [
-  { quote: "I stopped trying to fix everything at once. Two habits, short blocks, and I haven't missed a morning in a month.", name: "Leslie Livingston", detail: "31-day streak" },
-  { quote: "The group nudge is small but it works. Knowing three people will see my day keeps the walk on the calendar.", name: "Micheal Gough", detail: "18-day streak" },
-  { quote: "Seeing reading as a goal with a number turned it from a someday thing into a nightly thing.", name: "Bonnie Green", detail: "9 books this year" },
+  { tag: "Planner", title: "A week you can see", body: "Deadlines, appointments and tasks by day, with reminders that pop up and chime." },
 ];
 
 const FOOTER_COLS = [
-  { title: "Product", links: [["Overview", "#"], ["How it works", "#how"], ["Features", "#features"], ["Stories", "#stories"]] },
+  { title: "Product", links: [["Overview", "#"], ["How it works", "#how"], ["Features", "#features"]] },
   { title: "App", links: [["Dashboard", "/app/dashboard"], ["Goals", "/app/goals"], ["Habits", "/app/habits"], ["Profile", "/app/profile"]] },
   { title: "Company", links: [["About", "#"], ["Journal", "#"], ["Help center", "#"], ["Contact", "#"]] },
 ];
-
-const initials = (n: string) => n.split(" ").map((w) => w[0]).join("");
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -179,33 +171,9 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="stories" className="relative border-t border-home-line bg-white px-6 py-[clamp(64px,9vw,110px)]">
+      <section id="start" className="relative border-t border-home-line bg-white px-6 py-[clamp(64px,9vw,110px)]">
         <div className="mx-auto max-w-[1180px]">
-          <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7A726A]">Stories</div>
-          <h2 className="balance mt-3 max-w-[18ch] text-[clamp(32px,4.4vw,52px)] font-extrabold leading-[1.04] tracking-[-0.035em]">
-            People who kept going
-          </h2>
-          <div className="mt-11 grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
-            {STORIES.map((s, i) => (
-              <figure
-                key={s.name}
-                className="m-0 flex flex-col justify-between rounded-3xl p-7"
-                style={{ background: PASTEL[(i + 1) % 4] }}
-              >
-                <blockquote className="pretty m-0 text-lg font-medium leading-[1.5] tracking-[-0.01em]">“{s.quote}”</blockquote>
-                <figcaption className="mt-7 flex items-center gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-[13px] font-bold">
-                    {initials(s.name)}
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">{s.name}</span>
-                    <span className="block text-xs text-[#5C554E]">{s.detail}</span>
-                  </span>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-          <div className="mt-[72px] flex flex-col items-center gap-[18px] rounded-[28px] bg-home-tint px-6 py-12 text-center">
+          <div className="mt-0 flex flex-col items-center gap-[18px] rounded-[28px] bg-home-tint px-6 py-12 text-center">
             <h3 className="text-[clamp(26px,3.4vw,38px)] font-extrabold tracking-[-0.03em]">Start with one habit today</h3>
             <Link
               href={signedIn ? "/app" : "/signup"}
@@ -232,7 +200,7 @@ export default async function HomePage() {
                 <span className="text-base font-bold tracking-[0.02em]">STEADY</span>
               </div>
               <p className="text-sm leading-[1.55] text-[#5C554E]">
-                A calmer way to build habits. Short blocks, honest streaks, and a small group that notices.
+                A calmer way to build habits. Short blocks, honest streaks, and a plan you can see.
               </p>
               <div className="mt-1 flex gap-2">
                 <a href="#" className="rounded-[11px] bg-home-tint px-3.5 py-[9px] text-xs font-semibold hover:bg-peach">App Store</a>

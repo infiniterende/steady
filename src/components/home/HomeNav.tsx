@@ -6,7 +6,6 @@ const LINKS: { label: string; target: string | null }[] = [
   { label: "Overview", target: null },
   { label: "How it works", target: "how" },
   { label: "Features", target: "features" },
-  { label: "Stories", target: "stories" },
 ];
 
 export function HomeNav() {

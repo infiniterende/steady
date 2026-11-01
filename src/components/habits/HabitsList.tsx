@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { Domain } from "@prisma/client";
-import { addHabit, archiveHabit, logHabit, togglePauseHabit } from "@/app/app/actions";
+import { addHabit, archiveHabit, logHabit, setHabitSizes, togglePauseHabit } from "@/app/app/actions";
 import { DOMAIN_COLOR, DOMAIN_LABEL, DOMAINS } from "@/lib/domain";
 import { Bar, ErrorText, btnPrimary, btnSecondary, inputBase } from "@/components/app/ui";
 
@@ -17,6 +17,11 @@ export type HabitRow = {
   paused: boolean;
   streak: number;
   best: number;
+  minLabel: string;
+  stdLabel: string;
+  stretchLabel: string;
+  minMinutes: number;
+  stretchMinutes: number | null;
 };
 
 export function HabitsList({ habits }: { habits: HabitRow[] }) {
@@ -26,6 +31,8 @@ export function HabitsList({ habits }: { habits: HabitRow[] }) {
   const [time, setTime] = useState("7:00 AM");
   const [minutes, setMinutes] = useState("20");
   const [cadence, setCadence] = useState("Daily");
+  const [labels, setLabels] = useState({ min: "", std: "", stretch: "" });
+  const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -33,10 +40,11 @@ export function HabitsList({ habits }: { habits: HabitRow[] }) {
 
   const commit = () =>
     startTransition(async () => {
-      const res = await addHabit({ name, domain, time, minutes: parseInt(minutes, 10), cadence });
+      const res = await addHabit({ name, domain, time, minutes: parseInt(minutes, 10), cadence, minLabel: labels.min, stdLabel: labels.std, stretchLabel: labels.stretch });
       if (!res.ok) return setError(res.error);
       setAdding(false);
       setName("");
+      setLabels({ min: "", std: "", stretch: "" });
       setError("");
     });
 
@@ -66,6 +74,12 @@ export function HabitsList({ habits }: { habits: HabitRow[] }) {
             <option>Daily</option>
             <option>Weekdays</option>
           </select>
+          <div className="flex flex-[1_1_100%] flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-muted-2">Sizes</span>
+            <input value={labels.min} onChange={(e) => setLabels({ ...labels, min: e.target.value })} placeholder="Minimum: Read 1 page" aria-label="Minimum version" className={`${inputBase} flex-[1_1_150px]`} />
+            <input value={labels.std} onChange={(e) => setLabels({ ...labels, std: e.target.value })} placeholder="Standard: Read 10 pages" aria-label="Standard version" className={`${inputBase} flex-[1_1_150px]`} />
+            <input value={labels.stretch} onChange={(e) => setLabels({ ...labels, stretch: e.target.value })} placeholder="Stretch: Read 20 pages" aria-label="Stretch version" className={`${inputBase} flex-[1_1_150px]`} />
+          </div>
           <button type="button" onClick={commit} disabled={pending} className={btnPrimary}>Save</button>
           <button type="button" onClick={() => { setAdding(false); setError(""); }} className={btnSecondary}>Cancel</button>
           {error && <ErrorText>{error}</ErrorText>}
@@ -97,6 +111,9 @@ export function HabitsList({ habits }: { habits: HabitRow[] }) {
               <button type="button" disabled={pending} onClick={() => startTransition(() => logHabit(h.id).then(() => undefined))} className="cursor-pointer rounded-[9px] border-0 bg-olive px-[13px] py-[7px] text-xs font-semibold text-white hover:bg-olive-dark disabled:opacity-60">
                 Log
               </button>
+              <button type="button" onClick={() => setEditing(editing === h.id ? null : h.id)} aria-expanded={editing === h.id} className={btnSecondary}>
+                Sizes
+              </button>
               <button type="button" disabled={pending} onClick={() => startTransition(() => togglePauseHabit(h.id).then(() => undefined))} className={btnSecondary}>
                 {h.paused ? "Resume" : "Pause"}
               </button>
@@ -104,6 +121,7 @@ export function HabitsList({ habits }: { habits: HabitRow[] }) {
                 ×
               </button>
             </span>
+            {editing === h.id && <SizesEditor habit={h} onDone={() => setEditing(null)} />}
           </div>
         ))}
         {habits.length === 0 && (
@@ -113,5 +131,58 @@ export function HabitsList({ habits }: { habits: HabitRow[] }) {
         )}
       </div>
     </>
+  );
+}
+
+function SizesEditor({ habit, onDone }: { habit: HabitRow; onDone: () => void }) {
+  const [min, setMin] = useState(habit.minLabel);
+  const [std, setStd] = useState(habit.stdLabel);
+  const [stretch, setStretch] = useState(habit.stretchLabel);
+  const [minMin, setMinMin] = useState(String(habit.minMinutes));
+  const [stretchMin, setStretchMin] = useState(habit.stretchMinutes ? String(habit.stretchMinutes) : "");
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  const save = () =>
+    startTransition(async () => {
+      const res = await setHabitSizes(habit.id, {
+        minLabel: min,
+        stdLabel: std,
+        stretchLabel: stretch,
+        minMinutes: parseInt(minMin, 10),
+        stretchMinutes: stretchMin ? parseInt(stretchMin, 10) : null,
+      });
+      if (!res.ok) return setError(res.error);
+      onDone();
+    });
+
+  const row = "flex flex-wrap items-center gap-2";
+  return (
+    <div className="flex flex-[1_1_100%] flex-col gap-2 rounded-xl bg-surface p-3.5">
+      <p className="text-xs text-muted-2">Three ways to count this habit. On a hard day, the minimum still keeps the chain alive.</p>
+      <div className={row}>
+        <span className="w-[72px] text-xs font-semibold">Minimum</span>
+        <input value={min} onChange={(e) => setMin(e.target.value)} placeholder="e.g. Read 1 page" aria-label="Minimum version" className={`${inputBase} flex-[1_1_200px]`} />
+        <input value={minMin} onChange={(e) => setMinMin(e.target.value)} inputMode="numeric" aria-label="Minimum minutes" className={`${inputBase} w-[64px]`} />
+        <span className="text-xs text-muted-2">min</span>
+      </div>
+      <div className={row}>
+        <span className="w-[72px] text-xs font-semibold">Standard</span>
+        <input value={std} onChange={(e) => setStd(e.target.value)} placeholder="e.g. Read 10 pages" aria-label="Standard version" className={`${inputBase} flex-[1_1_200px]`} />
+        <span className="w-[64px] text-center font-mono text-xs text-muted-2">{habit.minutes}</span>
+        <span className="text-xs text-muted-2">min</span>
+      </div>
+      <div className={row}>
+        <span className="w-[72px] text-xs font-semibold">Stretch</span>
+        <input value={stretch} onChange={(e) => setStretch(e.target.value)} placeholder="e.g. Read 20 pages" aria-label="Stretch version" className={`${inputBase} flex-[1_1_200px]`} />
+        <input value={stretchMin} onChange={(e) => setStretchMin(e.target.value)} inputMode="numeric" placeholder="auto" aria-label="Stretch minutes" className={`${inputBase} w-[64px]`} />
+        <span className="text-xs text-muted-2">min</span>
+      </div>
+      <div className={row}>
+        <button type="button" onClick={save} disabled={pending} className={btnPrimary}>Save sizes</button>
+        <button type="button" onClick={onDone} className={btnSecondary}>Cancel</button>
+        {error && <ErrorText>{error}</ErrorText>}
+      </div>
+    </div>
   );
 }

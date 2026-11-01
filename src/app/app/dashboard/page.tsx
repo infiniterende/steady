@@ -15,7 +15,7 @@ export default async function DashboardPage() {
   const me = await requireProfile();
   const today = await getToday();
 
-  const [blocksToday, history120, points, habits, goals] = await Promise.all([
+  const [, history120, points, habits, goals] = await Promise.all([
     getBlocksForDay(me.id, today),
     getHistory(me.id, today, 120),
     getPointsForDay(me.id, today),
@@ -28,7 +28,6 @@ export default async function DashboardPage() {
   const weekPlanned = week.reduce((a, d) => a + d.total, 0);
   const weekAvg = weekPlanned ? Math.round((weekTotal / weekPlanned) * 100) : 0;
   const streaks = computeStreaks(history120, today);
-  const doneToday = blocksToday.filter((b) => b.done).length;
 
   const days = week.map((d) => ({ label: DAY_NAMES[weekdayIndex(d.day)], day: d.day, done: d.done, total: d.total, isToday: d.day === today }));
 
@@ -126,7 +125,7 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      <Rail userId={me.id} name={me.name} today={today} points={points} doneToday={`${doneToday} of ${blocksToday.length} today`} />
+      <Rail userId={me.id} today={today} />
     </>
   );
 }

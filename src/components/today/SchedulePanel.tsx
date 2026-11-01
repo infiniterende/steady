@@ -1,8 +1,9 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import type { Domain } from "@prisma/client";
-import { addBlock, removeBlock, toggleBlock } from "@/app/app/actions";
+import type { Domain, HabitSize } from "@prisma/client";
+import { addBlock, removeBlock, setBlockSize, toggleBlock } from "@/app/app/actions";
+import { SIZE_NAME, SIZE_SHORT, type SizeOption } from "@/lib/sizes";
 import { DOMAIN_LABEL } from "@/lib/domain";
 import { CatTile, ErrorText, inputBase, btnPrimary, btnSecondary } from "@/components/app/ui";
 
@@ -15,6 +16,9 @@ export type BlockItem = {
   title: string;
   note: string | null;
   done: boolean;
+  size?: HabitSize | null;
+  /** The habit's minimum / standard / stretch versions, when this block comes from a habit. */
+  sizes?: SizeOption[] | null;
 };
 
 export function SchedulePanel({ blocks, day, title = "Schedule", compact = false }: { blocks: BlockItem[]; day: string; title?: string; compact?: boolean }) {
@@ -26,11 +30,23 @@ export function SchedulePanel({ blocks, day, title = "Schedule", compact = false
   const [pending, startTransition] = useTransition();
   const [list, mutate] = useOptimistic(
     blocks,
-    (state: BlockItem[], action: { type: "toggle" | "remove"; id: string }) =>
+    (state: BlockItem[], action: { type: "toggle" | "remove" | "size"; id: string; size?: HabitSize }) =>
       action.type === "toggle"
-        ? state.map((b) => (b.id === action.id ? { ...b, done: !b.done } : b))
-        : state.filter((b) => b.id !== action.id),
+        ? state.map((b) => (b.id === action.id ? { ...b, done: !b.done, size: b.done ? null : (b.size ?? "STANDARD") } : b))
+        : action.type === "size"
+          ? state.map((b) => {
+              if (b.id !== action.id) return b;
+              const undo = b.done && b.size === action.size;
+              return undo ? { ...b, done: false, size: null } : { ...b, done: true, size: action.size };
+            })
+          : state.filter((b) => b.id !== action.id),
   );
+
+  const pick = (b: BlockItem, size: HabitSize) =>
+    startTransition(async () => {
+      mutate({ type: "size", id: b.id, size });
+      await setBlockSize(b.id, size);
+    });
 
   const sorted = [...list].sort((a, b) => (asc ? a.minuteOfDay - b.minuteOfDay : b.minuteOfDay - a.minuteOfDay));
 
@@ -141,12 +157,13 @@ export function SchedulePanel({ blocks, day, title = "Schedule", compact = false
                 <span className="block text-xs text-muted-2">
                   {DOMAIN_LABEL[b.domain]} · {b.minutes} min
                 </span>
+                <SizePicker block={b} onPick={(sz) => pick(b, sz)} />
               </span>
               <span
                 className="rounded-full px-[9px] py-1 text-[11px] font-semibold text-[#4A4F3E]"
                 style={{ background: b.done ? "#E8DDD3" : "#F4EDE6" }}
               >
-                {b.done ? "Done" : "Due"}
+                {b.done ? (b.size && b.sizes ? SIZE_NAME[b.size] : "Done") : "Due"}
               </span>
               <button
                 type="button"
@@ -205,6 +222,7 @@ export function SchedulePanel({ blocks, day, title = "Schedule", compact = false
                       {b.title}
                     </div>
                     {b.note && <div className="mt-0.5 text-[13px] text-muted-2">{b.note}</div>}
+                    <SizePicker block={b} onPick={(sz) => pick(b, sz)} />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -212,7 +230,7 @@ export function SchedulePanel({ blocks, day, title = "Schedule", compact = false
                     className="rounded-full px-[9px] py-1 text-[11px] font-semibold text-[#4A4F3E]"
                     style={{ background: b.done ? "#E8DDD3" : "#F4EDE6" }}
                   >
-                    {b.done ? "Done" : "Due"}
+                    {b.done ? (b.size && b.sizes ? SIZE_NAME[b.size] : "Done") : "Due"}
                   </span>
                   <button
                     type="button"
@@ -235,5 +253,33 @@ export function SchedulePanel({ blocks, day, title = "Schedule", compact = false
       </div>
       )}
     </>
+  );
+}
+
+function SizePicker({ block, onPick }: { block: BlockItem; onPick: (size: HabitSize) => void }) {
+  if (!block.sizes) return null;
+  return (
+    <div role="group" aria-label={`Log ${block.title} at a size`} className="mt-2 flex flex-wrap gap-1.5">
+      {block.sizes.map((o) => {
+        const on = block.done && block.size === o.size;
+        return (
+          <button
+            key={o.size}
+            type="button"
+            aria-pressed={on}
+            title={`${SIZE_NAME[o.size]}: ${o.label}`}
+            onClick={() => onPick(o.size)}
+            className="max-w-full cursor-pointer truncate rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+            style={{
+              borderColor: on ? "#6B705C" : "#E8DDD3",
+              background: on ? "#6B705C" : "#fff",
+              color: on ? "#fff" : "#4A4F3E",
+            }}
+          >
+            <span className="opacity-70">{SIZE_SHORT[o.size]}</span> · {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

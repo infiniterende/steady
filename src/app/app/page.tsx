@@ -1,28 +1,37 @@
 import Link from "next/link";
 import { Card, Ring } from "@/components/app/ui";
 import { Rail } from "@/components/app/Rail";
-import { Timers } from "@/components/today/Timers";
+import { FocusTimer } from "@/components/today/FocusTimer";
+import { Setup } from "@/components/today/Setup";
+import { Priorities } from "@/components/today/Priorities";
 import { TasksPanel } from "@/components/today/TasksPanel";
 import { SchedulePanel } from "@/components/today/SchedulePanel";
-import { getBlocksForDay, getPointsForDay, getTasksForDay, getToday, requireProfile } from "@/lib/data";
+import { getBlocksForDay, getFocusForDay, getPointsForDay, getTasksForDay, getToday, requireProfile, toBlockItem } from "@/lib/data";
 import { addDays, formatDay, isDayKey } from "@/lib/dates";
 
 export const metadata = { title: "Today — Steady" };
 
 export default async function TodayPage({ searchParams }: PageProps<"/app">) {
   const me = await requireProfile();
+  if (!me.onboarded) return <Setup firstName={me.name.split(" ")[0]} />;
   const today = await getToday();
   const params = await searchParams;
   const day = isDayKey(params.d) ? params.d : today;
 
-  const [blocks, tasks, points] = await Promise.all([
+  const [blockRows, tasks, points, focus] = await Promise.all([
     getBlocksForDay(me.id, day),
     getTasksForDay(me.id, day),
     getPointsForDay(me.id, day),
+    getFocusForDay(me.id, day),
   ]);
+  const blocks = blockRows.map(toBlockItem);
+  const focusOptions = [
+    ...tasks.filter((t) => !t.done).sort((a, b) => Number(b.top) - Number(a.top)).map((t) => ({ title: t.title, taskId: t.id as string | null })),
+    ...blocks.filter((b) => !b.done).map((b) => ({ title: b.title, taskId: null as string | null })),
+  ];
 
   const doneCount = blocks.filter((b) => b.done).length;
-  const minutes = blocks.filter((b) => b.done).reduce((a, b) => a + b.minutes, 0);
+  const minutes = blocks.filter((b) => b.done).reduce((a, b) => a + b.minutes, 0) + focus.minutes;
   const goalPct = Math.min(100, Math.round((points / me.pointsGoal) * 100));
   const dateLabel = formatDay(day) + (day === today ? " · today" : "");
   const doneLabel = `${doneCount} of ${blocks.length} done`;
@@ -55,7 +64,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/app">) {
           </div>
 
           <div className="flex flex-col gap-[18px] px-6 pb-6 pt-5">
-            <Timers key={day} day={day} initial={blocks.filter((b) => !b.done).map((b) => ({ id: b.id, name: b.title, minutes: b.minutes }))} />
+            <FocusTimer userId={me.id} day={day} options={focusOptions} today={focus} />
 
             <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3 pt-1">
               <Stat bg="#EEEFE6" label="Points today" labelColor="#4F5443" value={points}>
@@ -86,6 +95,13 @@ export default async function TodayPage({ searchParams }: PageProps<"/app">) {
         </Card>
 
         <Card className="px-6 pb-6 pt-[22px]">
+          <Priorities
+            day={day}
+            tasks={tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, top: t.top, firstStep: t.firstStep }))}
+          />
+        </Card>
+
+        <Card className="px-6 pb-6 pt-[22px]">
           <TasksPanel day={day} tasks={tasks} />
         </Card>
 
@@ -94,7 +110,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/app">) {
         </Card>
       </div>
 
-      <Rail userId={me.id} name={me.name} today={today} points={points} doneToday={doneLabel.replace(" done", " today")} />
+      <Rail userId={me.id} today={today} />
     </>
   );
 }

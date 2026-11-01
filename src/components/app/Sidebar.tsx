@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 
 const NAV = [
   { label: "Today", href: "/app" },
+  { label: "Planner", href: "/app/planner" },
   { label: "Dashboard", href: "/app/dashboard" },
   { label: "Habits", href: "/app/habits" },
   { label: "Goals", href: "/app/goals" },
+  { label: "Journal", href: "/app/journal" },
   { label: "Calendar", href: "/app/calendar" },
   { label: "Schedule", href: "/app/schedule" },
-  { label: "Streaks", href: "/app/streaks" },
-  { label: "Group", href: "/app/group" },
+  { label: "Review", href: "/app/review" },
 ];
 
 export function Sidebar() {
@@ -36,10 +37,10 @@ export function Sidebar() {
           </Link>
         );
       })}
-      <div className="mt-auto rounded-xl bg-surface p-3.5 text-xs leading-relaxed text-muted">
+      <Link href="/app/review" className="mt-auto rounded-xl bg-surface p-3.5 text-xs leading-relaxed text-muted hover:text-muted">
         <div className="mb-1 font-semibold text-[oklch(0.33_0.014_80)]">Weekly review</div>
-        Sunday, 7:00 pm — 12 minutes
-      </div>
+        What worked, what slipped, one adjustment
+      </Link>
     </nav>
   );
 }
@@ -47,7 +48,7 @@ export function Sidebar() {
 export function MobileNav() {
   const pathname = usePathname();
   return (
-    <nav className="flex gap-1 overflow-x-auto border-b border-line bg-white px-3 py-2 md:hidden">
+    <nav className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-b border-line bg-white px-3 py-2 md:hidden">
       {NAV.map((n) => {
         const on = n.href === "/app" ? pathname === "/app" : pathname.startsWith(n.href);
         return (
