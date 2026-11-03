@@ -36,7 +36,6 @@ export default async function JournalPage({ searchParams }: PageProps<"/app/jour
           </div>
           <JournalComposer
             key={day}
-            userId={me.id}
             day={day}
             today={today}
             entryId={entry?.id ?? null}

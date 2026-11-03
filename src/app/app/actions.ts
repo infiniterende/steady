@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import type { Domain, GoalKind, HabitSize, PlannerKind, Priority } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireProfile, getToday, JOURNAL_BUCKET } from "@/lib/data";
-import { createClient } from "@/lib/supabase/server";
+import { requireProfile, getToday } from "@/lib/data";
+import { removeObjects, signUpload, statObjects, UPLOAD_SIZE_HEADER } from "@/lib/gcs";
 import { isDayKey, keyToDate, parseTime, type DayKey } from "@/lib/dates";
 import { DOMAINS, POINTS } from "@/lib/domain";
 import { defaultMilestones, fmtNum } from "@/lib/goals";
@@ -574,16 +574,38 @@ export async function removeJournal(id: string): Promise<ActionResult> {
   const entry = await prisma.journalEntry.findFirst({ where: { id, userId: me.id }, include: { photos: true } });
   if (!entry) return fail("Entry not found.");
   if (entry.photos.length) {
-    const supabase = await createClient();
-    await supabase.storage.from(JOURNAL_BUCKET).remove(entry.photos.map((p) => p.path));
+    await removeObjects(entry.photos.map((p) => p.path));
   }
   await prisma.journalEntry.delete({ where: { id } });
   revalidateApp();
   return ok;
 }
 
+/** Hands the browser one short-lived upload link per photo, after checking the day and file types. */
+export async function createPhotoUploads(input: { day: string; types: string[] }): Promise<{ ok: true; uploads: { path: string; url: string; headers: Record<string, string> }[] } | { ok: false; error: string }> {
+  const me = await requireProfile();
+  const today = await getToday();
+  const day = isDayKey(input.day) ? input.day : today;
+  if (day > today) return { ok: false, error: "You can't journal a future day." };
+  if (!input.types.length || input.types.length > PHOTOS_PER_ENTRY) return { ok: false, error: `Up to ${PHOTOS_PER_ENTRY} photos per day.` };
+  if (input.types.some((t) => !PHOTO_TYPES[t])) return { ok: false, error: "Photos must be JPEG, PNG, WebP or GIF." };
+  const existing = await prisma.journalPhoto.count({ where: { userId: me.id, entry: { date: keyToDate(day) } } });
+  if (existing + input.types.length > PHOTOS_PER_ENTRY) return { ok: false, error: `Up to ${PHOTOS_PER_ENTRY} photos per day.` };
+  try {
+    const uploads = await Promise.all(
+      input.types.map(async (type) => {
+        const path = `${me.id}/${day}/${crypto.randomUUID()}.${PHOTO_TYPES[type]}`;
+        return { path, url: await signUpload(path, type), headers: { "Content-Type": type, ...UPLOAD_SIZE_HEADER } };
+      }),
+    );
+    return { ok: true, uploads };
+  } catch {
+    return { ok: false, error: "Couldn't start the upload. Please try again." };
+  }
+}
+
 /**
- * Photos are uploaded straight from the browser to Supabase Storage (so file size isn't limited by this
+ * Photos are uploaded straight from the browser to Google Cloud Storage (so file size isn't limited by this
  * server's request body). This records them once they're there, after checking each one.
  */
 export async function registerJournalPhotos(input: { day: string; paths: string[] }): Promise<ActionResult> {
@@ -592,9 +614,8 @@ export async function registerJournalPhotos(input: { day: string; paths: string[
   const day = isDayKey(input.day) ? input.day : today;
   const paths = [...new Set(input.paths)];
   if (!paths.length) return fail("Choose a photo first.");
-  const supabase = await createClient();
 
-  const discard = (list: string[]) => supabase.storage.from(JOURNAL_BUCKET).remove(list);
+  const discard = (list: string[]) => removeObjects(list);
   if (day > today) {
     await discard(paths.filter((p) => p.startsWith(`${me.id}/`)));
     return fail("You can't journal a future day.");
@@ -609,11 +630,10 @@ export async function registerJournalPhotos(input: { day: string; paths: string[
   }
 
   // Confirm each object really exists and is within the size limit.
-  const { data: listed, error: listError } = await supabase.storage.from(JOURNAL_BUCKET).list(`${me.id}/${day}`, { limit: 100 });
-  if (listError) return fail(`Couldn't check the upload: ${listError.message}`);
-  const found = new Map((listed ?? []).map((o) => [`${me.id}/${day}/${o.name}`, o]));
+  const found = await statObjects(paths).catch(() => null);
+  if (!found) return fail("Couldn't check the upload. Please try again.");
   const missing = paths.filter((p) => !found.has(p));
-  const oversize = paths.filter((p) => ((found.get(p)?.metadata as { size?: number } | null)?.size ?? 0) > PHOTO_MAX_BYTES);
+  const oversize = paths.filter((p) => (found.get(p) ?? 0) > PHOTO_MAX_BYTES);
   if (oversize.length) {
     await discard(oversize);
     return fail(`Photos can be up to ${PHOTO_MAX_MB} MB.`);
@@ -640,9 +660,11 @@ export async function removeJournalPhoto(id: string): Promise<ActionResult> {
   const me = await requireProfile();
   const photo = await prisma.journalPhoto.findFirst({ where: { id, userId: me.id } });
   if (!photo) return fail("Photo not found.");
-  const supabase = await createClient();
-  const { error } = await supabase.storage.from(JOURNAL_BUCKET).remove([photo.path]);
-  if (error) return fail(`Couldn't delete: ${error.message}`);
+  try {
+    await removeObjects([photo.path]);
+  } catch (e) {
+    return fail(`Couldn't delete: ${e instanceof Error ? e.message : "storage error"}`);
+  }
   await prisma.journalPhoto.delete({ where: { id } });
   revalidateApp();
   return ok;

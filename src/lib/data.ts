@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import type { GoalKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { signReads } from "@/lib/gcs";
 import { createClient } from "@/lib/supabase/server";
 import {
   addDays,
@@ -464,22 +465,16 @@ export async function getReminders(userId: string) {
 /* Journal                                                             */
 /* ------------------------------------------------------------------ */
 
-export const JOURNAL_BUCKET = "journal";
-
 export type JournalPhotoView = { id: string; url: string };
 
 /** Signed, short-lived URLs for private photos (keyed by storage path). */
 async function signPhotoUrls(paths: string[]): Promise<Map<string, string>> {
   if (!paths.length) return new Map();
-  const supabase = await createClient();
-  const { data } = await supabase.storage
-    .from(JOURNAL_BUCKET)
-    .createSignedUrls(paths, 60 * 60);
-  return new Map(
-    (data ?? []).flatMap((d) =>
-      d.signedUrl && d.path ? [[d.path, d.signedUrl] as [string, string]] : [],
-    ),
-  );
+  try {
+    return await signReads(paths, 60 * 60);
+  } catch {
+    return new Map();
+  }
 }
 
 export async function getJournalEntry(userId: string, day: DayKey) {

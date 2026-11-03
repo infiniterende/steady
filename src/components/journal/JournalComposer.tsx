@@ -2,17 +2,15 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { removeJournal, registerJournalPhotos, removeJournalPhoto, saveJournal } from "@/app/app/actions";
+import { createPhotoUploads, removeJournal, registerJournalPhotos, removeJournalPhoto, saveJournal } from "@/app/app/actions";
 import { MOODS, PROMPTS, moodOf, wordCount } from "@/lib/journal";
 import { formatDay } from "@/lib/dates";
 import { Lightbox } from "@/components/journal/Lightbox";
-import { createClient } from "@/lib/supabase/client";
-import { JOURNAL_BUCKET_NAME, PHOTOS_PER_ENTRY, PHOTO_MAX_BYTES, PHOTO_MAX_MB, PHOTO_TYPES } from "@/lib/photos";
+import { PHOTOS_PER_ENTRY, PHOTO_MAX_BYTES, PHOTO_MAX_MB, PHOTO_TYPES } from "@/lib/photos";
 
 type Photo = { id: string; url: string };
 
 export function JournalComposer({
-  userId,
   day,
   today,
   entryId,
@@ -22,7 +20,6 @@ export function JournalComposer({
   prompt,
   photos,
 }: {
-  userId: string;
   day: string;
   today: string;
   entryId: string | null;
@@ -97,18 +94,23 @@ export function JournalComposer({
     setError("");
     startUpload(async () => {
       // Straight from the browser to storage, so photo size isn't limited by the app server.
-      const supabase = createClient();
       const done: string[] = [];
       let failure = "";
-      for (const [i, f] of list.entries()) {
-        setProgress(list.length > 1 ? `Uploading ${i + 1} of ${list.length}…` : "Uploading…");
-        const path = `${userId}/${day}/${crypto.randomUUID()}.${PHOTO_TYPES[f.type]}`;
-        const { error: upErr } = await supabase.storage.from(JOURNAL_BUCKET_NAME).upload(path, f, { contentType: f.type, upsert: false });
-        if (upErr) {
-          failure = `Upload failed: ${upErr.message}`;
-          break;
+      const signed = await createPhotoUploads({ day, types: list.map((f) => f.type) });
+      if (!signed.ok) failure = signed.error;
+      else {
+        for (const [i, f] of list.entries()) {
+          setProgress(list.length > 1 ? `Uploading ${i + 1} of ${list.length}…` : "Uploading…");
+          const { path, url, headers } = signed.uploads[i];
+          try {
+            const res = await fetch(url, { method: "PUT", headers, body: f });
+            if (!res.ok) throw new Error(String(res.status));
+          } catch {
+            failure = "Upload failed. Check your connection and try again.";
+            break;
+          }
+          done.push(path);
         }
-        done.push(path);
       }
       if (done.length) {
         const res = await registerJournalPhotos({ day, paths: done });
