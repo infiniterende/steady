@@ -94,6 +94,10 @@ src/app/app/actions.ts    Server actions used by the app's client components
 src/components/           UI: app shell, rail, today panels, dashboard chart, forms
 ```
 
+## Work
+
+`/app/work` is a small scrum-style board for the day. Tasks move To do → In progress → Done for the chosen day; unplanned tasks wait in the Backlog and unfinished ones from earlier days can be pulled into today. Tasks can be sorted into **buckets** (streams such as Design or Build), tied to a **milestone** (shows done/total progress and a due date) and sized in points (1, 2, 3, 5, 8). Tables: `WorkTask`, `WorkBucket`, `WorkMilestone` (row-level security on, owner-only).
+
 ## Database on Google Cloud SQL
 
 Production runs on Cloud SQL for PostgreSQL (`steady-db`, project `steady-513617`) with no open network access. `src/lib/prisma.ts` connects through Google's Cloud SQL connector when `CLOUD_SQL_INSTANCE` is set, using a service account (`GCP_SERVICE_ACCOUNT_JSON`, role Cloud SQL Client) plus `CLOUD_SQL_USER`, `CLOUD_SQL_PASSWORD` and `CLOUD_SQL_DATABASE`. Without `CLOUD_SQL_INSTANCE` it uses `DATABASE_URL` as usual. Run migrations through the Cloud SQL Auth Proxy: `cloud-sql-proxy steady-513617:us-central1:steady-db --port 5433 --gcloud-auth`, then `prisma migrate deploy` with `DATABASE_URL`/`DIRECT_URL` pointing at `127.0.0.1:5433` (`sslmode=disable`; the proxy encrypts).

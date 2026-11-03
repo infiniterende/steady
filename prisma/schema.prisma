@@ -23,53 +23,56 @@ enum Priority {
 
 /// One row per Supabase auth user. `id` mirrors auth.users.id.
 model Profile {
-  id         String   @id @db.Uuid
-  email      String   @unique
-  name       String
-  pointsGoal Int      @default(200)
-  about      String?
-  quietHours   Boolean @default(true)
-  weeklyDigest Boolean @default(true)
-  blockReminders Boolean @default(true) // heads-up before each timed block / event / task
-  reminderLead   Int     @default(5)    // minutes before
-  onboarded      Boolean @default(false) // finished (or skipped) the first-run setup
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String   @id @db.Uuid
+  email          String   @unique
+  name           String
+  pointsGoal     Int      @default(200)
+  about          String?
+  quietHours     Boolean  @default(true)
+  weeklyDigest   Boolean  @default(true)
+  blockReminders Boolean  @default(true) // heads-up before each timed block / event / task
+  reminderLead   Int      @default(5) // minutes before
+  onboarded      Boolean  @default(false) // finished (or skipped) the first-run setup
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  habits      Habit[]
-  blocks      Block[]
-  tasks       Task[]
-  goals       Goal[]
-  pointEvents PointEvent[]
-  reminders   Reminder[]
-  journal     JournalEntry[]
-  events      CalendarEvent[]
-  focus       FocusSession[]
-  planner     PlannerItem[]
-  plannerDays PlannerDay[]
+  habits         Habit[]
+  blocks         Block[]
+  tasks          Task[]
+  goals          Goal[]
+  pointEvents    PointEvent[]
+  reminders      Reminder[]
+  journal        JournalEntry[]
+  events         CalendarEvent[]
+  focus          FocusSession[]
+  planner        PlannerItem[]
+  plannerDays    PlannerDay[]
+  workBuckets    WorkBucket[]
+  workMilestones WorkMilestone[]
+  workTasks      WorkTask[]
 }
 
 /// A recurring routine with a default slot in the day.
 model Habit {
-  id          String   @id @default(cuid())
-  userId      String   @db.Uuid
-  name        String
-  domain      Domain   @default(FOCUS)
-  cadence     String   @default("Daily")
-  time        String   @default("7:00 AM")
-  minutes     Int      @default(20)
-  note        String?
-  progress    Int      @default(0) // 0-100, progress in the current cycle
-  paused      Boolean  @default(false)
-  archived    Boolean  @default(false)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  name      String
+  domain    Domain   @default(FOCUS)
+  cadence   String   @default("Daily")
+  time      String   @default("7:00 AM")
+  minutes   Int      @default(20)
+  note      String?
+  progress  Int      @default(0) // 0-100, progress in the current cycle
+  paused    Boolean  @default(false)
+  archived  Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
 
   // Flexible sizes: what "done" looks like on a low, normal and great day.
-  minLabel     String? // e.g. "Read 1 page"
-  stdLabel     String? // e.g. "Read 10 pages"
-  stretchLabel String? // e.g. "Read 20 pages"
-  minMinutes   Int     @default(2)
+  minLabel       String? // e.g. "Read 1 page"
+  stdLabel       String? // e.g. "Read 10 pages"
+  stretchLabel   String? // e.g. "Read 20 pages"
+  minMinutes     Int     @default(2)
   stretchMinutes Int?
 
   user      Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -81,20 +84,20 @@ model Habit {
 
 /// A concrete timed block on a specific day (generated from habits, or added ad hoc).
 model Block {
-  id        String   @id @default(cuid())
-  userId    String   @db.Uuid
-  habitId   String?
-  date      DateTime @db.Date
-  time      String
+  id          String     @id @default(cuid())
+  userId      String     @db.Uuid
+  habitId     String?
+  date        DateTime   @db.Date
+  time        String
   minuteOfDay Int
-  domain    Domain   @default(FOCUS)
-  minutes   Int      @default(20)
-  title     String
-  note      String?
-  done      Boolean  @default(false)
-  size      HabitSize? // which version was done; null while open
-  hidden    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  domain      Domain     @default(FOCUS)
+  minutes     Int        @default(20)
+  title       String
+  note        String?
+  done        Boolean    @default(false)
+  size        HabitSize? // which version was done; null while open
+  hidden      Boolean    @default(false)
+  createdAt   DateTime   @default(now())
 
   user  Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
   habit Habit?  @relation(fields: [habitId], references: [id], onDelete: SetNull)
@@ -120,10 +123,10 @@ model Task {
   priority  Priority @default(MEDIUM)
   done      Boolean  @default(false)
   top       Boolean  @default(false) // one of the (max three) daily priorities
-  firstStep String?  // the one small next action from "Help me start"
+  firstStep String? // the one small next action from "Help me start"
   createdAt DateTime @default(now())
 
-  user  Profile         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
   focus FocusSession[]
 
   @@index([userId, date])
@@ -148,25 +151,25 @@ model FocusSession {
 }
 
 enum GoalKind {
-  COUNT   // accumulate toward a target (books read, sessions)
+  COUNT // accumulate toward a target (books read, sessions)
   MEASURE // track a measurement toward a target (weight, resting HR)
 }
 
 /// A longer-term target with daily entries and milestones.
 model Goal {
-  id        String   @id @default(cuid())
-  userId    String   @db.Uuid
+  id        String    @id @default(cuid())
+  userId    String    @db.Uuid
   name      String
-  kind      GoalKind @default(COUNT)
-  start     Float    @default(0) // MEASURE: the value you started from
-  current   Float    @default(0) // COUNT: accumulated so far
+  kind      GoalKind  @default(COUNT)
+  start     Float     @default(0) // MEASURE: the value you started from
+  current   Float     @default(0) // COUNT: accumulated so far
   target    Float
-  unit      String   @default("units")
-  horizon   String   @default("No deadline")
+  unit      String    @default("units")
+  horizon   String    @default("No deadline")
   deadline  DateTime? @db.Date
-  note      String   @default("Just started")
-  step      Float    @default(1)
-  createdAt DateTime @default(now())
+  note      String    @default("Just started")
+  step      Float     @default(1)
+  createdAt DateTime  @default(now())
 
   user       Profile     @relation(fields: [userId], references: [id], onDelete: Cascade)
   entries    GoalEntry[]
@@ -245,7 +248,7 @@ model JournalEntry {
   id        String   @id @default(cuid())
   userId    String   @db.Uuid
   date      DateTime @db.Date
-  mood      Int?     // 1 (sad) … 5 (great)
+  mood      Int? // 1 (sad) … 5 (great)
   title     String   @default("")
   body      String   @default("")
   createdAt DateTime @default(now())
@@ -338,4 +341,61 @@ model PlannerDay {
   user Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+}
+
+enum WorkStatus {
+  TODO
+  DOING
+  DONE
+}
+
+/// A stream of work (design, backend, admin…) that tasks are sorted into.
+model WorkBucket {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  name      String
+  tint      String   @default("sage") // sage | clay | sand | blush
+  createdAt DateTime @default(now())
+
+  user  Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks WorkTask[]
+
+  @@index([userId])
+}
+
+/// A bigger deliverable with an optional due date; its progress is the share of its tasks that are done.
+model WorkMilestone {
+  id        String    @id @default(cuid())
+  userId    String    @db.Uuid
+  title     String
+  due       DateTime? @db.Date
+  createdAt DateTime  @default(now())
+
+  user  Profile    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks WorkTask[]
+
+  @@index([userId])
+}
+
+/// One piece of work. `day` null means it sits in the backlog; a date means it is planned for that day.
+model WorkTask {
+  id          String     @id @default(cuid())
+  userId      String     @db.Uuid
+  title       String
+  status      WorkStatus @default(TODO)
+  day         DateTime?  @db.Date
+  points      Int?
+  note        String?
+  bucketId    String?
+  milestoneId String?
+  createdAt   DateTime   @default(now())
+  doneAt      DateTime?
+
+  user      Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bucket    WorkBucket?    @relation(fields: [bucketId], references: [id], onDelete: SetNull)
+  milestone WorkMilestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+
+  @@index([userId, day])
+  @@index([bucketId])
+  @@index([milestoneId])
 }

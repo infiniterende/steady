@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { Domain, GoalKind, HabitSize, PlannerKind, Priority } from "@prisma/client";
+import type { Domain, GoalKind, HabitSize, PlannerKind, Priority, WorkStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProfile, getToday } from "@/lib/data";
 import { removeObjects, signUpload, statObjects, UPLOAD_SIZE_HEADER } from "@/lib/gcs";
@@ -13,6 +13,7 @@ import { SIZES } from "@/lib/sizes";
 import { STARTERS } from "@/lib/starters";
 import { PHOTOS_PER_ENTRY, PHOTO_MAX_BYTES, PHOTO_MAX_MB, PHOTO_TYPES } from "@/lib/photos";
 import { PLANNER_KINDS, REMIND_VALUES, TINT_KEYS } from "@/lib/planner";
+import { POINT_OPTIONS as WORK_POINTS, WORK_STATUSES } from "@/lib/work";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -815,6 +816,110 @@ export async function setPlannerDay(input: { date: string; label: string; note: 
       create: { userId: me.id, date, label, note, tint },
       update: { label, note, tint },
     });
+  revalidateApp();
+  return ok;
+}
+
+/* ---------------- Work ---------------- */
+
+export type WorkTaskInput = { title: string; points: number | null; bucketId: string | null; milestoneId: string | null; note?: string };
+
+/** Validates a work task's fields, including that the bucket and milestone belong to this person. */
+async function cleanWorkTask(userId: string, input: WorkTaskInput) {
+  const title = input.title.trim();
+  if (!title) return { error: "Give the task a name." } as const;
+  if (title.length > 140) return { error: "Keep the name under 140 characters." } as const;
+  const points = input.points === null || input.points === undefined ? null : Number(input.points);
+  if (points !== null && !(WORK_POINTS as readonly number[]).includes(points)) return { error: "Unknown size." } as const;
+  if (input.bucketId && !(await prisma.workBucket.findFirst({ where: { id: input.bucketId, userId }, select: { id: true } }))) return { error: "Bucket not found." } as const;
+  if (input.milestoneId && !(await prisma.workMilestone.findFirst({ where: { id: input.milestoneId, userId }, select: { id: true } }))) return { error: "Milestone not found." } as const;
+  return {
+    data: { title, points, bucketId: input.bucketId || null, milestoneId: input.milestoneId || null, note: input.note?.trim().slice(0, 400) || null },
+  } as const;
+}
+
+export async function addWorkTask(input: WorkTaskInput & { day: string | null }): Promise<ActionResult> {
+  const me = await requireProfile();
+  const c = await cleanWorkTask(me.id, input);
+  if (c.error !== undefined) return fail(c.error);
+  if (input.day !== null && !isDayKey(input.day)) return fail("Pick a day.");
+  await prisma.workTask.create({ data: { ...c.data, userId: me.id, day: input.day ? keyToDate(input.day) : null } });
+  revalidateApp();
+  return ok;
+}
+
+export async function updateWorkTask(id: string, input: WorkTaskInput): Promise<ActionResult> {
+  const me = await requireProfile();
+  const c = await cleanWorkTask(me.id, input);
+  if (c.error !== undefined) return fail(c.error);
+  const res = await prisma.workTask.updateMany({ where: { id, userId: me.id }, data: c.data });
+  if (!res.count) return fail("Task not found.");
+  revalidateApp();
+  return ok;
+}
+
+export async function setWorkStatus(id: string, status: string): Promise<ActionResult> {
+  const me = await requireProfile();
+  if (!(WORK_STATUSES as readonly string[]).includes(status)) return fail("Unknown status.");
+  const next = status as WorkStatus;
+  await prisma.workTask.updateMany({ where: { id, userId: me.id }, data: { status: next, doneAt: next === "DONE" ? new Date() : null } });
+  revalidateApp();
+  return ok;
+}
+
+/** Plan a task for a day, or send it back to the backlog with `null`. */
+export async function planWorkTask(id: string, day: string | null): Promise<ActionResult> {
+  const me = await requireProfile();
+  if (day !== null && !isDayKey(day)) return fail("Pick a day.");
+  await prisma.workTask.updateMany({
+    where: { id, userId: me.id },
+    data: day === null ? { day: null, status: "TODO", doneAt: null } : { day: keyToDate(day) },
+  });
+  revalidateApp();
+  return ok;
+}
+
+export async function removeWorkTask(id: string): Promise<ActionResult> {
+  const me = await requireProfile();
+  await prisma.workTask.deleteMany({ where: { id, userId: me.id } });
+  revalidateApp();
+  return ok;
+}
+
+export async function addWorkBucket(input: { name: string; tint: string }): Promise<ActionResult> {
+  const me = await requireProfile();
+  const name = input.name.trim();
+  if (!name) return fail("Give the bucket a name.");
+  if (name.length > 30) return fail("Keep it under 30 characters.");
+  if ((await prisma.workBucket.count({ where: { userId: me.id } })) >= 20) return fail("That's plenty of buckets. Remove one first.");
+  const tint = (TINT_KEYS as string[]).includes(input.tint) ? input.tint : "sage";
+  await prisma.workBucket.create({ data: { userId: me.id, name, tint } });
+  revalidateApp();
+  return ok;
+}
+
+export async function removeWorkBucket(id: string): Promise<ActionResult> {
+  const me = await requireProfile();
+  await prisma.workBucket.deleteMany({ where: { id, userId: me.id } });
+  revalidateApp();
+  return ok;
+}
+
+export async function addWorkMilestone(input: { title: string; due: string }): Promise<ActionResult> {
+  const me = await requireProfile();
+  const title = input.title.trim();
+  if (!title) return fail("Give the milestone a name.");
+  if (title.length > 80) return fail("Keep it under 80 characters.");
+  if (input.due && !isDayKey(input.due)) return fail("Pick a valid due date.");
+  if ((await prisma.workMilestone.count({ where: { userId: me.id } })) >= 50) return fail("That's plenty of milestones. Remove one first.");
+  await prisma.workMilestone.create({ data: { userId: me.id, title, due: input.due ? keyToDate(input.due) : null } });
+  revalidateApp();
+  return ok;
+}
+
+export async function removeWorkMilestone(id: string): Promise<ActionResult> {
+  const me = await requireProfile();
+  await prisma.workMilestone.deleteMany({ where: { id, userId: me.id } });
   revalidateApp();
   return ok;
 }

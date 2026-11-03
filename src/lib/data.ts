@@ -942,3 +942,49 @@ export async function getPlannerDays(userId: string, start: DayKey, end: DayKey)
   });
   return rows.map((r) => ({ day: dateToKey(r.date), label: r.label, note: r.note, tint: r.tint }));
 }
+
+/* ------------------------------------------------------------------ */
+/* Work                                                                */
+/* ------------------------------------------------------------------ */
+
+/** Everything the Work board needs for one day: that day's tasks, the backlog, unfinished leftovers from earlier days, buckets and milestone progress. */
+export async function getWorkBoard(userId: string, day: DayKey) {
+  const dayDate = keyToDate(day);
+  const [tasks, buckets, milestones, counts] = await Promise.all([
+    prisma.workTask.findMany({
+      where: { userId, OR: [{ day: dayDate }, { day: null }, { day: { lt: dayDate }, status: { not: "DONE" } }] },
+      orderBy: [{ createdAt: "asc" }],
+      take: 400,
+    }),
+    prisma.workBucket.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+    prisma.workMilestone.findMany({ where: { userId }, orderBy: [{ due: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }] }),
+    prisma.workTask.groupBy({ by: ["milestoneId", "status"], where: { userId, milestoneId: { not: null } }, _count: { _all: true } }),
+  ]);
+  const progress = new Map<string, { total: number; done: number }>();
+  for (const c of counts) {
+    const cur = progress.get(c.milestoneId!) ?? { total: 0, done: 0 };
+    cur.total += c._count._all;
+    if (c.status === "DONE") cur.done += c._count._all;
+    progress.set(c.milestoneId!, cur);
+  }
+  return {
+    tasks: tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      day: t.day ? dateToKey(t.day) : null,
+      points: t.points,
+      note: t.note,
+      bucketId: t.bucketId,
+      milestoneId: t.milestoneId,
+    })),
+    buckets: buckets.map((b) => ({ id: b.id, name: b.name, tint: b.tint })),
+    milestones: milestones.map((m) => ({
+      id: m.id,
+      title: m.title,
+      due: m.due ? dateToKey(m.due) : null,
+      total: progress.get(m.id)?.total ?? 0,
+      done: progress.get(m.id)?.done ?? 0,
+    })),
+  };
+}
