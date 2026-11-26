@@ -2,14 +2,14 @@
 
 A habit-tracking web app: a daily plan of timed habit blocks, today's goals, longer-term goals, streaks, a planner and a journal.
 
-Built with **Next.js 16** (App Router), **Prisma** on **Supabase Postgres**, and **Supabase Auth**. Design references live in [`docs/design`](docs/design).
+Built with **Next.js 16** (App Router), **Prisma** on **PostgreSQL**, its own email + password sign-in, and Google Cloud (Cloud SQL, Cloud Storage, Cloud Run). Design references live in [`docs/design`](docs/design).
 
 ## What's here
 
 | Route | What it is |
 | --- | --- |
 | `/` | Marketing homepage with Log in / Sign up |
-| `/signup`, `/login` | Email + password auth (Supabase) |
+| `/signup`, `/login` | Email + password auth (built in) |
 | `/app` | **Today**: timers, points, today's goals, schedule blocks, day navigation |
 | `/app/dashboard` | **Dashboard**: weekly KPIs, 7-day bar chart, progress by domain, goals |
 | `/app/habits` | Habits list: log progress, pause/resume, add, archive |
@@ -27,15 +27,15 @@ Every active habit automatically becomes a block on each day's schedule. Checkin
 
 ## Setup
 
-### 1. Supabase project
+### 1. Environment
 
-Create a project at [supabase.com](https://supabase.com), then copy `.env.example` to `.env` and fill in:
+Copy `.env.example` to `.env` and fill in:
 
-- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY` on older projects) — Settings → API
-- `DATABASE_URL` (pooled, port 6543) and `DIRECT_URL` (direct, port 5432) — Settings → Database
-- `NEXT_PUBLIC_SITE_URL` — where confirmation emails should send users back (add it to Authentication → URL Configuration → Redirect URLs as `.../auth/callback`)
+- `DATABASE_URL` and `DIRECT_URL`: any PostgreSQL (local Docker Postgres is fine). On Google Cloud set the `CLOUD_SQL_*` variables instead (see below).
+- `AUTH_SECRET`: a random string of at least 32 characters that signs session cookies (`openssl rand -hex 32`). Changing it signs everyone out.
+- `GCS_BUCKET` and `GCP_SERVICE_ACCOUNT_JSON` for journal photos (see below).
 
-If email confirmations are enabled in Authentication → Providers → Email, sign-up shows a "check your inbox" state and the confirmation link lands on `/auth/callback`. Turn confirmations off for the quickest local loop.
+Sign-in is built in: passwords are hashed with scrypt in `Profile.passwordHash`, and a signed 30-day cookie holds the session (`src/lib/auth.ts`, `src/lib/session.ts`). There is no email confirmation or password-reset email yet. To set or reset a password for an existing account, run `DATABASE_URL=... node scripts/set-password.mjs you@example.com` (it prompts without echoing).
 
 ### 2. Database
 
@@ -43,8 +43,6 @@ If email confirmations are enabled in Authentication → Providers → Email, si
 npm install
 npm run db:deploy
 ```
-
-Journal photos live in a private Supabase Storage bucket and are uploaded straight from the browser to it (up to 15 MB each, six per day), so the app server's request size limit doesn't apply. Create it and its owner-only policies by running `supabase/migrations/20261021220000_journal_photos_bucket.sql` in the SQL editor (or `supabase db push` on a linked project).
 
 `db:deploy` applies the migrations in `prisma/migrations` (the `init` migration creates all tables). `npm run db:migrate` creates a new migration after you change `prisma/schema.prisma`; `npm run db:generate` regenerates the Prisma client (also runs on `npm install`).
 
@@ -56,7 +54,7 @@ Steady is an installable web app: `src/app/manifest.ts` (name, icons, standalone
 
 ### Security: row-level security
 
-Every table has row-level security on, with an owner-only policy for signed-in users and no access for the anonymous role (`prisma/migrations/20261102130000_row_level_security`). The app talks to the database through Prisma as the database owner, so it is unaffected; RLS only governs Supabase's public API. When you add a table, enable RLS and add a policy in the same migration, then run `npm run check:rls` (it fails if any table is exposed).
+Every table has row-level security on, with an owner-only policy for signed-in users and no access for the anonymous role (`prisma/migrations/20261102130000_row_level_security`). The app talks to the database through Prisma as the database owner, so it is unaffected; RLS only matters if the database is ever exposed through a public API such as Supabase's (the policies need Supabase's `auth` schema and are skipped on plain Postgres). When you add a table, enable RLS and add a policy in the same migration, then run `npm run check:rls` (it fails if any table is exposed).
 
 ### 3. Run
 
@@ -66,24 +64,12 @@ npm run dev
 
 The first visit to `/app` after signing up creates an empty profile. New accounts see a short setup card on Today: pick any starter habits (each with minimum, standard and stretch sizes), add one priority for today, or start with a clean slate. Nothing is created unless it is picked.
 
-## Local Supabase (optional)
-
-With Docker running you can develop against a fully local stack instead of a hosted project:
-
-```bash
-npx supabase start
-```
-
-The local stack needs the storage service for journal photos, so don't exclude `storage-api` when starting it.
-
-The local API gateway is on port 54331 (`supabase/config.toml`). Point `.env` at the printed values (`API URL` → `NEXT_PUBLIC_SUPABASE_URL`, `anon key`, and `postgresql://postgres:postgres@127.0.0.1:54322/postgres` for both database URLs) and run `npm run db:deploy`. Email confirmation is off by default locally.
-
 ## Project layout
 
 ```
 prisma/schema.prisma      Profile, Habit, Block, Task, Goal, GoalEntry, Milestone, PointEvent, Reminder, CalendarEvent, JournalEntry, JournalPhoto, FocusSession, PlannerItem, PlannerDay
-src/proxy.ts              Refreshes the Supabase session; guards /app
-src/lib/supabase/         Server, browser and proxy Supabase clients
+src/proxy.ts              Guards /app using the signed session cookie
+src/lib/auth.ts           Password hashing, sessions, login throttle
 src/lib/data.ts           Queries: profile, block generation, streak math
 src/lib/dates.ts          Day keys ("YYYY-MM-DD"), timezone, time parsing
 src/lib/goals.ts          Goal progress, milestone status, pace notes (pure helpers)
@@ -104,4 +90,16 @@ Production runs on Cloud SQL for PostgreSQL (`steady-db`, project `steady-513617
 
 ## Journal photos on Google Cloud Storage
 
-Photos live in the private bucket `gs://steady-513617-journal` (public access prevention on). The server signs short-lived upload and view links (`src/lib/gcs.ts`) using the same service account as the database, after checking who is asking; each upload is capped at 15 MB by the signed link itself. Set `GCS_BUCKET` and `GCP_SERVICE_ACCOUNT_JSON` (the service account also needs Storage Object Admin on the bucket). The bucket's CORS rule allows browser PUT/GET. Supabase Storage is no longer used.
+Photos live in the private bucket `gs://steady-513617-journal` (public access prevention on). The server signs short-lived upload and view links (`src/lib/gcs.ts`) using the same service account as the database, after checking who is asking; each upload is capped at 15 MB by the signed link itself. Set `GCS_BUCKET` and `GCP_SERVICE_ACCOUNT_JSON` (the service account also needs Storage Object Admin on the bucket). The bucket's CORS rule allows browser PUT/GET. 
+
+## Hosting the app on Cloud Run
+
+`Dockerfile`, `cloudbuild.yaml` and `scripts/deploy-cloud-run.sh` build and deploy the app to Cloud Run (service `steady`, scales to zero), running as the `steady-vercel` service account with secrets (database password, service-account key, `AUTH_SECRET`) in Secret Manager. Run `SITE_URL=https://your-domain bash scripts/deploy-cloud-run.sh`.
+
+## Subscription paywall ($20/month, Stripe)
+
+Everything under `/app` requires an active subscription. `requireProfile()` (used by every app page and server action) sends anyone without access to `/subscribe`, which starts Stripe Checkout. Access is open while the subscription is `active`, `trialing` or `past_due` (Stripe is retrying the card), or when `Profile.comped` is true. The $20/month price is created in Stripe on first checkout (lookup key `steady_monthly_20`). Profile → Subscription → **Manage billing** opens Stripe's customer portal (card, invoices, cancel).
+
+- Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_SITE_URL` (used for Checkout return links).
+- Webhook endpoint: `https://<your-domain>/api/stripe/webhook`, events `checkout.session.completed` and `customer.subscription.created/updated/deleted/paused/resumed`.
+- Give an account free access: `DATABASE_URL=... node scripts/comp-account.mjs you@example.com on`.

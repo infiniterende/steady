@@ -5,7 +5,8 @@ import { cache } from "react";
 import type { GoalKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { signReads } from "@/lib/gcs";
-import { createClient } from "@/lib/supabase/server";
+import { currentUserId } from "@/lib/auth";
+import { hasAccess } from "@/lib/plan";
 import {
   addDays,
   dateToKey,
@@ -59,60 +60,23 @@ export const getNowMinute = cache(async (): Promise<number> => {
   }
 });
 
+/** The signed-in person's profile, whether or not they're subscribed (for the paywall and billing pages). */
+export const requireAccount = cache(async () => {
+  const userId = await currentUserId();
+  if (!userId) redirect("/login");
+  const profile = await prisma.profile.findUnique({ where: { id: userId } });
+  if (!profile) redirect("/login");
+  return profile;
+});
+
 /**
- * A profile left over from an earlier auth project (same email, different user id) is adopted by the
- * signed-in user: its id is re-keyed so every habit, goal and entry follows. Only done when the email is
- * confirmed and no live auth account still owns the old id, so one person can't claim another's data.
+ * The signed-in, paying (or comped) person's profile. Everything under /app goes through this, pages and
+ * server actions alike, so the paywall can't be skipped by calling an action directly.
+ * New accounts start clean; see the setup card on Today.
  */
-async function adoptLeftoverProfile(user: { id: string; email?: string; email_confirmed_at?: string | null }) {
-  if (!user.email || !user.email_confirmed_at) return null;
-  const stale = await prisma.profile.findFirst({ where: { email: { equals: user.email, mode: "insensitive" } } });
-  if (!stale || stale.id === user.id) return null;
-  try {
-    const live = await prisma.$queryRaw<{ n: number }[]>`select count(*)::int as n from auth.users where id = ${stale.id}::uuid`;
-    if (live[0]?.n) return null;
-  } catch {
-    return null; // can't verify the old id is orphaned, so don't touch it
-  }
-  return prisma.$transaction(async (tx) => {
-    await tx.journalPhoto.updateMany({ where: { userId: stale.id }, data: { userId: user.id } });
-    return tx.profile.update({ where: { id: stale.id }, data: { id: user.id } });
-  });
-}
-
-/** Returns the signed-in user's profile, creating an empty one on first visit. New accounts start clean; see the setup card on Today. */
 export const requireProfile = cache(async () => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const existing = await prisma.profile.findUnique({ where: { id: user.id } });
-  if (existing) return existing;
-
-  const adopted = await adoptLeftoverProfile(user);
-  if (adopted) return adopted;
-
-  const name =
-    (user.user_metadata?.full_name as string | undefined)?.trim() ||
-    user.email?.split("@")[0] ||
-    "Steady user";
-
-  let profile;
-  try {
-    profile = await prisma.profile.create({
-      data: { id: user.id, email: user.email ?? `${user.id}@unknown`, name },
-    });
-  } catch (error) {
-    // A parallel request may have created it first.
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
-      const again = await prisma.profile.findUnique({ where: { id: user.id } });
-      if (again) return again;
-    }
-    throw error;
-  }
-
+  const profile = await requireAccount();
+  if (!hasAccess(profile)) redirect("/subscribe");
   return profile;
 });
 

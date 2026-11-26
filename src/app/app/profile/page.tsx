@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { PLAN_LABEL } from "@/lib/plan";
+import { openBillingPortal } from "@/app/subscribe/actions";
 import { Card } from "@/components/app/ui";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { computeStreaks, getGoalSummaries, getHabits, getHistory, getPointsForDay, getToday, requireProfile } from "@/lib/data";
@@ -66,6 +68,26 @@ export default async function ProfilePage() {
               <div className="text-xs text-muted-2">{s.label}</div>
             </div>
           ))}
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="mb-2.5 text-[19px] font-bold">Subscription</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-[oklch(0.4_0.014_80)]">
+            {me.comped
+              ? "Free access, no billing."
+              : me.subscriptionStatus === "past_due"
+                ? "Your last payment didn't go through. Update your card to keep access."
+                : `Steady · ${PLAN_LABEL}${me.currentPeriodEnd ? ` · ${me.cancelAtPeriodEnd ? "ends" : "renews"} ${me.currentPeriodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` : ""}`}
+          </p>
+          {me.stripeCustomerId && (
+            <form action={openBillingPortal} className="ml-auto">
+              <button type="submit" className="cursor-pointer rounded-[9px] border border-soft bg-white px-3 py-[7px] text-xs font-semibold text-[oklch(0.45_0.014_80)] hover:bg-surface">
+                Manage billing
+              </button>
+            </form>
+          )}
         </div>
       </Card>
 

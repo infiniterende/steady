@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // A self-contained server build, used by the Dockerfile for Google Cloud Run.
+  output: "standalone",
 };
 
 export default nextConfig;

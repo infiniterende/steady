@@ -8,7 +8,7 @@ export default function SignupPage() {
   return (
     <AuthShell
       title="Start your journey"
-      subtitle="Two or three habits, short blocks, and a streak that's honest."
+      subtitle="Two or three habits, short blocks, and a streak that's honest. $20/month after you sign up; cancel anytime."
       footer={
         <>
           Already have an account?{" "}

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { HomeNav } from "@/components/home/HomeNav";
 import { PhoneMock } from "@/components/home/PhoneMock";
 import { Newsletter } from "@/components/home/Newsletter";
-import { createClient } from "@/lib/supabase/server";
+import { currentUserId } from "@/lib/auth";
 
 const PASTEL = ["#F9D8CF", "#D3E9DF", "#D6E3F3", "#F8EBC4"];
 
@@ -28,11 +28,7 @@ const FOOTER_COLS = [
 ];
 
 export default async function HomePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const signedIn = !!user;
+  const signedIn = !!(await currentUserId());
 
   return (
     <div className="home-theme relative min-h-screen overflow-hidden">
